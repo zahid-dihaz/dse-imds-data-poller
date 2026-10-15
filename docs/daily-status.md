@@ -179,8 +179,11 @@ recovered automatically).
    since 12:14, collector not responding" appended; existing notes are never
    replaced. A later success resolves that note by itself.
    If `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set, the watchdog also
-   sends one Telegram message listing the endpoints that *newly* went stale
-   (reruns stay quiet while they remain flagged). Create the bot with
+   sends one Telegram message, and if the `SMTP_*` / `ALERT_EMAIL_*` vars (see
+   `.env.example`) are set it sends the same alert by email, listing the endpoints that *newly* went stale
+   (reruns stay quiet while they remain flagged). Each attempt is recorded in the
+   `notification_log` collection (`channel`, `status` sent|failed, `error`,
+   `message`, `sent_at`); unconfigured channels are not recorded. Create the bot with
    @BotFather, message it, then read `chat.id` from
    `https://api.telegram.org/bot<TOKEN>/getUpdates`.
 5. **Finalizer** (15:05): closed day => `exchange_open:false`,
@@ -214,4 +217,4 @@ that has data but an empty `lastdatas` does not re-read every table from `'0'`.
   failed (existing behaviour; the failure is now visible in the status note).
 - No MySQL overlap guard or query timeouts; the price-earnings scraper still
   retries a non-200 response forever.
-- Failure alerts (email/Telegram) are not implemented.
+- Alerts are sent by the watchdog only; the finalizer does not alert.

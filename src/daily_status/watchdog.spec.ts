@@ -6,7 +6,9 @@ import { STATUS_COLLECTION, SESSION_COLLECTION } from './status.config';
 import { StatusService } from './status.service';
 import { findStale, runWatchdog } from './watchdog';
 
-jest.mock('./telegram', () => ({ notifyTelegram: jest.fn() }));
+jest.mock('./telegram', () => ({
+  notifyTelegram: jest.fn().mockResolvedValue({ status: 'skipped' }),
+}));
 
 const TEST_URI =
   process.env.MONGO_TEST_URI ??
@@ -132,7 +134,14 @@ const entry = (doc: any, ep: string) =>
 describe('runWatchdog notifications (mongo)', () => {
   dbTest('alerts once per stale endpoint, not on every rerun', async (c) => {
     const svc = new StatusService(c, () => at('10:00'));
-    for (const ep of ['/circuit-breaks', '/price-earnings', '/trd', '/man', '/mkistat', '/companies']) {
+    for (const ep of [
+      '/circuit-breaks',
+      '/price-earnings',
+      '/trd',
+      '/man',
+      '/mkistat',
+      '/companies',
+    ]) {
       await svc.recordSuccess(ep, 10);
     }
     await svc.recordSuccess('/idx', 10);
@@ -150,7 +159,15 @@ describe('runWatchdog notifications (mongo)', () => {
 
   dbTest('sends nothing when every endpoint is healthy', async (c) => {
     const svc = new StatusService(c, () => at('10:05'));
-    for (const ep of ['/companies', '/circuit-breaks', '/price-earnings', '/idx', '/trd', '/man', '/mkistat']) {
+    for (const ep of [
+      '/companies',
+      '/circuit-breaks',
+      '/price-earnings',
+      '/idx',
+      '/trd',
+      '/man',
+      '/mkistat',
+    ]) {
       await svc.recordSuccess(ep, 10);
     }
     const notify = jest.fn();

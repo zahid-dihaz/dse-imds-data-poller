@@ -8,7 +8,7 @@ import { MarketHours } from './market-hours';
 import { connectMongo } from './mongo';
 import { dhakaDate, dhakaInstant, dhakaTime } from './dhaka-time';
 import { applyStale, DailyStatusDoc } from './status.logic';
-import { notifyTelegram } from './telegram';
+import { notifyAll } from './notify';
 import { StatusService } from './status.service';
 import { ENDPOINTS } from './status.config';
 
@@ -62,7 +62,7 @@ export async function runWatchdog(
   conn: Connection,
   now: Date = new Date(),
   hours: MarketHours = new MarketHours(conn, () => now),
-  notify: (text: string) => Promise<void> = notifyTelegram,
+  notify: (text: string) => Promise<unknown> = (text) => notifyAll(text, conn),
 ): Promise<WatchdogResult> {
   // Outside market hours and on closed days: do nothing at all.
   if (!(await hours.isMarketOpen(now))) {
