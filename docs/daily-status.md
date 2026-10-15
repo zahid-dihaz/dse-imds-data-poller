@@ -178,6 +178,11 @@ recovered automatically).
    `partial` (or `failed` if nothing was captured today) and gets "no captures
    since 12:14, collector not responding" appended; existing notes are never
    replaced. A later success resolves that note by itself.
+   If `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set, the watchdog also
+   sends one Telegram message listing the endpoints that *newly* went stale
+   (reruns stay quiet while they remain flagged). Create the bot with
+   @BotFather, message it, then read `chat.id` from
+   `https://api.telegram.org/bot<TOKEN>/getUpdates`.
 5. **Finalizer** (15:05): closed day => `exchange_open:false`,
    `overall_status:"closed"`, `endpoints:[]`. Open day => checks every endpoint
    captured through the 14:00 close, checks `trd_mds` (one market-wide document

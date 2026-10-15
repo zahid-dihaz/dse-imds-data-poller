@@ -6,6 +6,8 @@ import { STATUS_COLLECTION, SESSION_COLLECTION } from './status.config';
 import { StatusService } from './status.service';
 import { findStale, runWatchdog } from './watchdog';
 
+jest.mock('./telegram', () => ({ notifyTelegram: jest.fn() }));
+
 const TEST_URI =
   process.env.MONGO_TEST_URI ??
   'mongodb://localhost:27017/dse_status_test_watchdog';
@@ -126,6 +128,36 @@ const load = (c: Connection) =>
   c.db.collection<any>(STATUS_COLLECTION).findOne({ _id: DAY });
 const entry = (doc: any, ep: string) =>
   doc.endpoints.find((e: any) => e.endpoint === ep);
+
+describe('runWatchdog notifications (mongo)', () => {
+  dbTest('alerts once per stale endpoint, not on every rerun', async (c) => {
+    const svc = new StatusService(c, () => at('10:00'));
+    for (const ep of ['/circuit-breaks', '/price-earnings', '/trd', '/man', '/mkistat', '/companies']) {
+      await svc.recordSuccess(ep, 10);
+    }
+    await svc.recordSuccess('/idx', 10);
+    const notify = jest.fn().mockResolvedValue(undefined);
+    const run = (when: string) =>
+      runWatchdog(c, at(when), hoursFor(c, at(when)), notify);
+
+    await run('12:14');
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify.mock.calls[0][0]).toContain('/idx: no captures since 10:00');
+
+    await run('12:24'); // still stale, already flagged
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
+  dbTest('sends nothing when every endpoint is healthy', async (c) => {
+    const svc = new StatusService(c, () => at('10:05'));
+    for (const ep of ['/companies', '/circuit-breaks', '/price-earnings', '/idx', '/trd', '/man', '/mkistat']) {
+      await svc.recordSuccess(ep, 10);
+    }
+    const notify = jest.fn();
+    await runWatchdog(c, at('10:10'), hoursFor(c, at('10:10')), notify);
+    expect(notify).not.toHaveBeenCalled();
+  });
+});
 
 describe('runWatchdog (mongo)', () => {
   dbTest(

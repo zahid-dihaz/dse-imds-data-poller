@@ -6,8 +6,9 @@ process.env.TZ = 'Asia/Dhaka';
 import { Connection } from 'mongoose';
 import { MarketHours } from './market-hours';
 import { connectMongo } from './mongo';
-import { dhakaDate, dhakaInstant } from './dhaka-time';
-import { DailyStatusDoc } from './status.logic';
+import { dhakaDate, dhakaInstant, dhakaTime } from './dhaka-time';
+import { applyStale, DailyStatusDoc } from './status.logic';
+import { notifyTelegram } from './telegram';
 import { StatusService } from './status.service';
 import { ENDPOINTS } from './status.config';
 
@@ -61,6 +62,7 @@ export async function runWatchdog(
   conn: Connection,
   now: Date = new Date(),
   hours: MarketHours = new MarketHours(conn, () => now),
+  notify: (text: string) => Promise<void> = notifyTelegram,
 ): Promise<WatchdogResult> {
   // Outside market hours and on closed days: do nothing at all.
   if (!(await hours.isMarketOpen(now))) {
@@ -74,8 +76,21 @@ export async function runWatchdog(
   const doc = await status.getDay(date);
 
   const stale = findStale(doc, date, session.opening, now);
-  for (const { endpoint, since } of stale) {
-    await status.markStale(endpoint, since);
+  const fresh: StaleEndpoint[] = [];
+  for (const s of stale) {
+    const entry = doc?.endpoints.find((e) => e.endpoint === s.endpoint);
+    // Alert only on the transition: applyStale is a no-op for an endpoint the
+    // watchdog already flagged, so the 10-minute reruns stay quiet.
+    if (!entry || applyStale(entry, s.since) !== entry) fresh.push(s);
+    await status.markStale(s.endpoint, s.since);
+  }
+  if (fresh.length) {
+    await notify(
+      [
+        `⚠️ DSE poller ${date}: ${fresh.length} endpoint(s) not capturing`,
+        ...fresh.map((s) => `• ${s.endpoint}: no captures since ${dhakaTime(s.since)}`),
+      ].join('\n'),
+    );
   }
   return { flagged: stale.map((s) => s.endpoint) };
 }
