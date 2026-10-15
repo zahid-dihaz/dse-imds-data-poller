@@ -25,11 +25,14 @@ export interface DaySession {
 }
 
 const FALLBACK_RETRY_MS = 60_000;
+// Minimum gap between refreshes of the live is_open/phase fields.
+const LIVE_REFRESH_MS = 60_000;
 
 export class MarketHours {
   private cache = new Map<string, DaySession>();
   private inflight = new Map<string, Promise<DaySession>>();
   private lastFallbackAt = new Map<string, number>();
+  private lastLiveRefreshAt = new Map<string, number>();
 
   constructor(
     private readonly conn: Connection,
@@ -70,10 +73,50 @@ export class MarketHours {
     const session = await this.getSession(dhakaDate(at));
     if (!session.tradingDay) return false;
     const minutes = dhakaMinutes(at);
-    return (
+    const inside =
       minutes >= hhmmToMinutes(session[from] as string) &&
-      minutes <= hhmmToMinutes(session[to] as string)
-    );
+      minutes <= hhmmToMinutes(session[to] as string);
+    if (
+      inside &&
+      session.source !== 'fallback' &&
+      session.date === dhakaDate(this.now())
+    ) {
+      await this.refreshLive(session.date);
+    }
+    return inside;
+  }
+
+  /**
+   * is_open and phase are live values; the day's doc is first written
+   * whenever the service first asks (possibly before the open), so they are
+   * re-read from the site while the market is in its reporting window.
+   * Throttled; never throws. The session times are left as first stored.
+   */
+  private async refreshLive(date: string): Promise<void> {
+    const last = this.lastLiveRefreshAt.get(date);
+    const nowMs = this.now().getTime();
+    if (last && nowMs - last < LIVE_REFRESH_MS) return;
+    this.lastLiveRefreshAt.set(date, nowMs);
+    try {
+      const site = await this.fetcher();
+      if (site.date !== date) {
+        throw new Error(`site reported ${site.date}, expected ${date}`);
+      }
+      await this.conn.db
+        .collection<any>(SESSION_COLLECTION)
+        .updateOne(
+          { _id: date },
+          {
+            $set: {
+              is_open: site.isOpen,
+              phase: site.phase,
+              fetched_at: site.fetchedAt,
+            },
+          },
+        );
+    } catch (err) {
+      console.error(`[daily_status] live market status refresh failed: ${err}`);
+    }
   }
 
   private fallback(date: string): DaySession {

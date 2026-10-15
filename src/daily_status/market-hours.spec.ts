@@ -147,4 +147,33 @@ describe('MarketHours', () => {
     expect((await hours.getSession()).source).toBe('fallback');
     expect(await c.db.collection(SESSION_COLLECTION).countDocuments()).toBe(0);
   });
+
+  dbTest(
+    'is_open stored before the open is refreshed once the window starts',
+    async (c) => {
+      let now = at('03:00'); // Dhaka 09:00, before pre-opening
+      const fetcher = jest.fn().mockResolvedValue(site());
+      const hours = new MarketHours(c, () => now, fetcher);
+      const doc = () =>
+        c.db.collection<any>(SESSION_COLLECTION).findOne({ _id: DAY });
+
+      await hours.getSession();
+      expect(await hours.inReportingWindow(now)).toBe(false);
+      expect(await doc()).toMatchObject({ trading_day: true, is_open: false });
+      expect(fetcher).toHaveBeenCalledTimes(1); // no refresh outside the window
+
+      now = at('04:05'); // 10:05, market open
+      fetcher.mockResolvedValue(site({ isOpen: true, phase: 'open' }));
+      await hours.inReportingWindow(now);
+      expect(await doc()).toMatchObject({ is_open: true, phase: 'open' });
+
+      await hours.inReportingWindow(now); // throttled
+      expect(fetcher).toHaveBeenCalledTimes(2);
+
+      now = at('08:05'); // 14:05, closed again
+      fetcher.mockResolvedValue(site({ isOpen: false, phase: 'closed' }));
+      await hours.inReportingWindow(now);
+      expect(await doc()).toMatchObject({ is_open: false, phase: 'closed' });
+    },
+  );
 });

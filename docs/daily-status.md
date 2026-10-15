@@ -51,7 +51,10 @@ published by the DSE site (one document per date: `trading_day`, `is_open`,
 `phase`, `pre_opening`, `opening`, `closing`, `post_closing`, `fetched_at`). It
 replaces a holiday calendar: closed days and session hours come from
 `https://new.dsebd.org/api/live/market` (the JSON the site's own front end
-polls), fetched once per day and stored.
+polls), fetched once per day and stored. `is_open`, `phase` and `fetched_at` are
+live values: they are re-read from the site (at most once a minute) while the
+market is inside its reporting window, so they track open/closed through the
+day. The session times are not rewritten.
 
 ## Nightly check
 
