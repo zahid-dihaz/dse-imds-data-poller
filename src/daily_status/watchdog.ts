@@ -88,7 +88,9 @@ export async function runWatchdog(
     await notify(
       [
         `⚠️ DSE poller ${date}: ${fresh.length} endpoint(s) not capturing`,
-        ...fresh.map((s) => `• ${s.endpoint}: no captures since ${dhakaTime(s.since)}`),
+        ...fresh.map(
+          (s) => `• ${s.endpoint}: no captures since ${dhakaTime(s.since)}`,
+        ),
       ].join('\n'),
     );
   }
