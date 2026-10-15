@@ -166,12 +166,6 @@ export const STATUS_CONFIG = {
   // no rows" is recorded.
   consecutiveEmptyPollLimit: 3,
 
-  // Watchdog runs every 10 minutes via system crontab (not in-process).
-  watchdogIntervalMin: 10,
-
-  // End-of-day finalizer, Dhaka HH:mm. Runs every calendar day.
-  finalizerTime: '15:05',
-
   // Max time a status write may take before it is abandoned (ms).
   writeTimeoutMs: 3000,
 

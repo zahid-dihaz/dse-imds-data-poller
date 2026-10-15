@@ -78,6 +78,24 @@ commands below from the repository root.
 Check `node -v` on the VPS: the Docker image installs Node 14; the code is
 compiled to ES2017 and uses only `https` (no global `fetch`).
 
+## Scheduling with PM2 (starts with the app)
+
+`ecosystem.config.js` starts the Nest app, the watchdog and the finalizer
+together. The watchdog/finalizer are separate PM2 processes, so a crash of the
+Nest app does not stop them.
+
+```bash
+yarn build
+pm2 start ecosystem.config.js
+pm2 save && pm2 startup   # survive reboots
+```
+
+`autorestart: false` is intentional for the two helpers: they exit after each
+run and PM2 re-launches them via `cron_restart`. A PM2 process that has never
+run yet (just after `pm2 start`) shows as launched once, then waits for its
+schedule; that first run exits quietly outside market hours. Use either PM2
+or the crontab below, not both, or the helpers run twice.
+
 ## Scheduling (system crontab, not Docker)
 
 The watchdog and finalizer are standalone processes, separate from the Nest app
@@ -112,8 +130,9 @@ OnCalendar=*-*-* 15:05:00 Asia/Dhaka
 (each timer pairs with a oneshot `.service` running the same `node ...` command
 with `WorkingDirectory=/opt/dsedatamigration`.)
 
-The finalizer time (15:05) and other settings live in
-`src/daily_status/status.config.ts`; keep the crontab in step with it.
+The finalizer's run time (15:05) is set only by the schedule (crontab or
+`ecosystem.config.js`); nothing in the code reads it. Other settings live in
+`src/daily_status/status.config.ts`.
 
 ## /companies schedule
 
