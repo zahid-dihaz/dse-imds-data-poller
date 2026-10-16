@@ -20,7 +20,8 @@ module.exports = {
       name: 'dse-watchdog',
       script: 'dist/daily_status/watchdog.js',
       autorestart: false,
-      cron_restart: '*/10 4-8 * * 0-4', // time in UTC, so 4-8 = 10am-2pm Dhaka time (UTC+6), Sun-Thu
+      // cron_restart: '*/10 4-8 * * 0-4', // time in UTC, so 4-8 = 10am-2pm Dhaka time (UTC+6), Sun-Thu
+      cron_restart: '*/2 3-8 * * 0-6', // time in UTC, so 4-8 = 10am-2pm Dhaka time (UTC+6), Sun-Thu
     },
     {
       name: 'dse-finalizer',
