@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import * as mysql from 'mysql2/promise';
 
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Connection, Model } from 'mongoose';
 import { ManDocument } from '../entities/man.entities';
 import { MkistatDocument } from '../entities/mkistat.entities';
 import { TrdDocument } from '../entities/trd.entities';
@@ -13,6 +13,7 @@ import { config } from '../../dbconfig/db.config';
 import { StatusService } from '../../daily_status/status.service';
 import { MarketHours } from '../../daily_status/market-hours';
 import { PollReporter } from '../../daily_status/poll-reporter';
+import { recordPollError } from '../../daily_status/error-log';
 import {
   classifyMysqlError,
   ClassifiedError,
@@ -51,6 +52,7 @@ export class MdsdataService {
     private readonly lastDataService: LastDataService,
     private readonly status: StatusService,
     private readonly marketHours: MarketHours,
+    @InjectConnection() private readonly conn?: Connection,
   ) {
     for (const [table, endpoint] of Object.entries(ENDPOINT_BY_TABLE)) {
       this.reporters[table] = new PollReporter(status, marketHours, endpoint);
@@ -69,7 +71,10 @@ export class MdsdataService {
       connection = await mysql.createConnection(config);
       console.log('Connection established successfully.');
     } catch (error) {
-      console.error('Error connecting to the database:', error);
+      await recordPollError(
+        { table: 'ALL', stage: 'connect', error },
+        this.conn,
+      );
       const failure = classifyMysqlError(error, 'connect');
       await Promise.all(
         Object.values(this.reporters).map((r) => r.error(failure)),
@@ -150,7 +155,10 @@ export class MdsdataService {
             `SELECT * FROM ${table} WHERE ${SortOn} > '${LastData}' ORDER BY ${SortOn} LIMIT 50000`,
           )) as [RowDataPacket[], FieldPacket[]];
         } catch (error) {
-          console.log('error in mdsdata', error);
+          await recordPollError(
+            { table, stage: 'query', error, context: { after: LastData } },
+            this.conn,
+          );
           queryError = error;
           break;
         }
@@ -181,7 +189,10 @@ export class MdsdataService {
         }); //Saving last migrated data trace to DB.
       }
     } catch (error) {
-      console.log('error in mdsdata', error);
+      await recordPollError(
+        { table, stage: 'migrate', error, context: { lastData: LastData } },
+        this.conn,
+      );
       mongoError ??= error;
     }
 
@@ -249,8 +260,20 @@ export class MdsdataService {
 
         //!
       } catch (error) {
-        console.log('Skiped duplicate in TRD', error);
-        if (!isDuplicateError(error)) result.error ??= error;
+        if (isDuplicateError(error)) {
+          console.log('Skiped duplicate in TRD');
+        } else {
+          result.error ??= error;
+          await recordPollError(
+            {
+              table: 'TRD',
+              stage: 'write-row',
+              error,
+              context: { TRD_LM_DATE_TIME: row.TRD_LM_DATE_TIME },
+            },
+            this.conn,
+          );
+        }
       }
     }
     return result;
@@ -316,10 +339,18 @@ export class MdsdataService {
       }
       return { written: rows.length };
     } catch (error) {
-      console.log('Skiped duplicate in ', table);
+      const duplicate = isDuplicateError(error);
+      if (duplicate) {
+        console.log('Skiped duplicate in ', table);
+      } else {
+        await recordPollError(
+          { table, stage: 'write-bulk', error, context: { rows: rows.length } },
+          this.conn,
+        );
+      }
       return {
         written: insertedBefore(error),
-        error: isDuplicateError(error) ? undefined : error,
+        error: duplicate ? undefined : error,
       };
     }
   }
